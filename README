@@ -1,0 +1,8 @@
+timerd
+===
+simple python script i wrote to connect to a toggl account via API key (stored in a dotenv file)
+which can:
+    - start and stop timer sessions
+    - get epoch and timestamp of when session was started
+    - get time elapsed
+    - edit session PID

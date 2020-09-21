@@ -1,0 +1,121 @@
+#!/usr/bin/python3
+import time
+import urllib
+import readline
+import json
+import re
+from datetime import datetime as dt
+
+import colorama
+
+from os import getenv
+from toggl.TogglPy import Toggl, Endpoints
+from dotenv import load_dotenv
+
+colorama.init()
+load_dotenv()
+
+toggl = Toggl()
+
+toggl.setAPIKey(getenv("API_KEY"))
+
+triggered = None
+
+running = toggl.currentRunningTimeEntry()['data']
+not_running_status = colorama.Fore.RED + colorama.Style.BRIGHT + "Not Running" + colorama.Style.RESET_ALL
+def running_status(service):
+    return colorama.Fore.GREEN + colorama.Style.BRIGHT + "Running [{} ({})]".format(service['description'], service['id']) + colorama.Style.RESET_ALL
+
+if not running: status = not_running_status
+else: status = running_status(running)
+print(colorama.Fore.RED + colorama.Style.BRIGHT +  "Status: " + status)
+
+def help(command=None):
+    commands = {
+        "help":"show this menu",
+        "help [command]":"show help for a specific command",
+        "epoch":"show unix timestamp of when timer was started",
+        "start":"start a new timer session",
+        "stop":"stop current timer session",
+        "pidedit":"change timer session pid (project id)",
+        "status":"show session status",
+        "bye/exit/quit":"exit timerd"
+    }
+
+    if not command: print(re.sub(r'[{}",]', ' ', colorama.Fore.CYAN + json.dumps(commands, sort_keys=False, indent=0).replace(":", colorama.Fore.RED + colorama.Style.BRIGHT + "\n\t=>" + colorama.Style.RESET_ALL + colorama.Fore.CYAN)) + colorama.Style.RESET_ALL)   
+    elif command == "help": print("show help for all commands")
+    else: print(commands[command])
+
+def pidhelper(data, pid):
+    data['time_entry']['pid'] = pid
+
+    try:
+        res = toggl.putRequest(Endpoints().TIME_ENTRIES + "/" + str(data['time_entry']['id']), parameters=data)
+        print(res)
+    except urllib.error.HTTPError:
+        print('uh oh')
+
+def pidedit():
+    while True:
+        data = {"time_entry":response['data']}
+        p = input("pidedit> ")
+
+        if p == 'null': pidhelper(data, 0)
+        elif p == "tux": pidhelper(data, 163647253)
+        elif p == 'exit': break
+        else: pidhelper(data, p)
+
+def convert(seconds): 
+    seconds = seconds % (24 * 3600) 
+    hour = seconds // 3600
+    seconds %= 3600
+    minutes = seconds // 60
+    seconds %= 60
+      
+    return "%02d:%02d:%02d" % (hour, minutes, seconds) 
+
+while True:
+
+    if triggered:
+        response = toggl.startTimeEntry(input("description: "))
+        numid = response['data']['id']
+        epoch = int(time.time())
+        triggered = False
+        running = toggl.currentRunningTimeEntry()
+    if running:
+        try:
+            numid = running['id']
+        except KeyError:
+            running = running['data']
+            numid = running['id']
+        
+        status = running_status(running)
+
+        year = running['start'][0:4]
+        month = running['start'][5:7]
+        day = running['start'][8:10]
+        hour = int(running['start'][11:13]) - 4 #GMT to EST offset 
+        minute = running['start'][14:16]
+        second = running['start'][17:19]
+
+        epoch = int(dt(int(year), int(month), int(day), int(hour), int(minute), int(second)).timestamp())
+        time_started = "started {}-{}-{} @ {}:{}:{}".format(month, day, year, hour, minute, second)
+    else:
+        numid = None
+        epoch = None
+        time_started = None
+        status = not_running_status
+
+    option = input("> ")
+
+    if option == "epoch": print(epoch)
+    elif option == "time": print(time_started)
+    elif option == "start": triggered = True
+    elif option == "stop": toggl.stopTimeEntry(str(numid)); running=False
+    elif option == "pidedit": pidedit()
+    elif option == "time since": print("seconds: {}\nHH:MM:SS: {}".format(int(time.time()) - epoch, convert(int(time.time()) - epoch))) if epoch else print(epoch)
+    elif option == "status": print(status)
+    elif option == "help": help()
+    elif option[0:4] == "help": help(command=option[5::])
+    elif option == "bye" or option == "exit" or option == "quit": exit(0)
+    else: print("unrecognized command, type 'help' for help")
