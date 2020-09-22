@@ -24,7 +24,7 @@ triggered = None
 running = toggl.currentRunningTimeEntry()['data']
 not_running_status = colorama.Fore.RED + colorama.Style.BRIGHT + "Not Running" + colorama.Style.RESET_ALL
 def running_status(service):
-    return colorama.Fore.GREEN + colorama.Style.BRIGHT + "Running [{} ({})]".format(service['description'], service['id']) + colorama.Style.RESET_ALL
+    return colorama.Fore.CYAN + colorama.Style.BRIGHT + "Running [{} ({})]".format(service['description'], service['id']) + colorama.Style.RESET_ALL
 
 if not running: status = not_running_status
 else: status = running_status(running)
@@ -38,6 +38,7 @@ def help(command=None):
         "start":"start a new timer session",
         "stop":"stop current timer session",
         "pidedit":"change timer session pid (project id)",
+        "descedit":"change session description",
         "status":"show session status",
         "bye/exit/quit":"exit timerd"
     }
@@ -57,13 +58,28 @@ def pidhelper(data, pid):
 
 def pidedit():
     while True:
-        data = {"time_entry":response['data']}
+        data = {"time_entry":running}
         p = input("pidedit> ")
 
         if p == 'null': pidhelper(data, 0)
         elif p == "tux": pidhelper(data, 163647253)
         elif p == 'exit': break
         else: pidhelper(data, p)
+
+def descedit():
+    while True:
+        data = {"time_entry":running}
+        d = input("descedit> ")
+
+        if d == 'exit': break
+
+        data['time_entry']['description'] = d
+
+        try:
+            res = toggl.putRequest(Endpoints().TIME_ENTRIES + "/" + str(data['time_entry']['id']), parameters=data)
+            print(res)
+        except urllib.error.HTTPError:
+            print('uh oh')
 
 def convert(seconds): 
     seconds = seconds % (24 * 3600) 
@@ -93,8 +109,14 @@ while True:
 
         year = running['start'][0:4]
         month = running['start'][5:7]
-        day = running['start'][8:10]
-        hour = int(running['start'][11:13]) - 4 #GMT to EST offset 
+        
+        if int(running['start'][11:13]) >= 4: # bc math and time don't mix
+            hour = int(running['start'][11:13]) - 4 #GMT to EST offset
+            day = running['start'][8:10] 
+        else:
+            hour = int(running['start'][11:13]) + 20 #GMT to EST offset
+            day = int(running['start'][8:10]) - 1
+
         minute = running['start'][14:16]
         second = running['start'][17:19]
 
@@ -114,6 +136,7 @@ while True:
     elif option == "stop": toggl.stopTimeEntry(str(numid)); running=False
     elif option == "pidedit": pidedit()
     elif option == "time since": print("seconds: {}\nHH:MM:SS: {}".format(int(time.time()) - epoch, convert(int(time.time()) - epoch))) if epoch else print(epoch)
+    elif option == "descedit": descedit()
     elif option == "status": print(status)
     elif option == "help": help()
     elif option[0:4] == "help": help(command=option[5::])
